@@ -27,6 +27,7 @@ TEST_DATA_CSV = 'test.csv'
 
 # eigenvector files
 EIGENVECTOR_COVX_FIRST_2500 = 'eigs_x_2500.pickle'
+EIGENVECTOR_COVX_ALL = 'eigs_x_all.pickle'
 
 # prediction files
 KMEANS_RANDOM_INIT = "kmeans_random_predictions.txt"
@@ -441,7 +442,7 @@ def digitRecognitionKMeans(meanInit=True, loadPickledData=True):
     print "[*] Clearing memory of test data..."
     del testX, data, predictions
 
-def kMeansWithPCA(meanInit=True):
+def kMeansWithPCA(meanInit=True, loadPickledData=False):
     """
     RESULTS (with 2500 examples):
 
@@ -453,7 +454,51 @@ def kMeansWithPCA(meanInit=True):
     l_values = [1, 5, 15, 50, 100, 200, 300, 400, 500, 600, 700, 784]
     accs = []
     for l in l_values:
-        accs.append(pcatest(l, meanInit))
+
+        print
+        print "[*] Loading data..."
+        data = loadPickle(TRAIN_DATA_PICKLE)
+        X = data['data']
+        Y = np.array(X[:, 0])
+        X = X[:, 1:]
+
+        """ Comment this in to restrict the size of the dataset
+        X = X[0:2500, :]
+        Y = Y[0:2500, :]
+        """
+
+        # get the eigenvectos of the covariance of X
+        E = None
+        if loadPickledData:
+            print "[*] Loading eigenvectors..."
+            E = loadPickle(EIGENVECTOR_COVX_ALL)
+        else:
+            print "[*] Calculating eigenvectors..."
+            E = pca(X)
+
+        # initialize clusters
+        init = None
+        if meanInit:
+            print "[*] Computing means of training dataset digits..."
+            init = plotMeanByClass(X, Y)
+        else:
+            # do random init
+            print "[*] Computing random centers for initialization..."
+            init = np.random.random_integers(0, high=256, size=(10, l))
+
+        print "[*] Projecting examples down into (%d) dimensional space..." % l
+        projX = projection(X, E, l)
+        projMeanX = projection(init, E, l)
+
+        print "[*] Building clustering model..."
+        centers, clusterAssignments = kMeans(projX, projMeanX, l2)
+
+        # get training score
+        trainingPredictions = kMeansFit(projX, centers, l2)
+        accuracy = np.sum(trainingPredictions == Y) / float(Y.shape[0])
+        print "[*] Training accuracy for %d components: %f" % (l, accuracy)
+
+        accs.append(accuracy)
 
     # then plot the resulting curve to see the optimal values for PCA
     plt.figure('Accuracy as a function of number of components projected')
@@ -464,48 +509,8 @@ def kMeansWithPCA(meanInit=True):
     ax.legend(loc='lower right')
     plt.show()
 
-def pcatest(l, meanInit=True):
-    """
-    Does a single run of projecting training examples into the lower dimensional space,
-    running kMeans with the means initialized 
-    """
-    print
-    print "[*] Loading data..."
-    data = loadPickle(TRAIN_DATA_PICKLE)
-    X = data['data']
-    Y = np.array(X[:, 0])
-    X = X[:, 1:]
-
-    """ Comment this in to restrict the size of the dataset
-    X = X[0:2500, :]
-    Y = Y[0:2500, :]
-    """
-
-    print "[*] Loading eigenvectors..."
-    E = loadPickle(EIGENVECTOR_COVX_FIRST_2500)
-
-    # initialize clusters
-    init = None
-    if meanInit:
-        print "[*] Computing means of training dataset digits..."
-        init = plotMeanByClass(X, Y)
-    else:
-        # do random init
-        print "[*] Computing random centers for initialization..."
-        init = np.random.random_integers(0, high=256, size=(10, l))
-
-    print "[*] Projecting examples down into (%d) dimensional space..." % l
-    projX = projection(X, E, l)
-    projMeanX = projection(init, E, l)
-
-    print "[*] Building clustering model..."
-    centers, clusterAssignments = kMeans(projX, projMeanX, l2)
-
-    # get training score
-    trainingPredictions = kMeansFit(projX, centers, l2)
-    accuracy = np.sum(trainingPredictions == Y) / float(Y.shape[0])
-    print "[*] Training accuracy for %d components: %f" % (l, accuracy)
-    return accuracy
+def kNN(k):
+    pass
 
 '''
 ############################ RESULTS ########################################
@@ -519,6 +524,6 @@ digitRecognitionKMeans(meanInit=False, loadPickledData=True)
 digitRecognitionKMeans(meanInit=True, loadPickledData=True)
 '''
 
-kMeansWithPCA(True)
+kMeansWithPCA(True, False)
 
-kMeansWithPCA(False)
+kMeansWithPCA(False, False)
