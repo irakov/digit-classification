@@ -1,7 +1,9 @@
 import numpy as np
+
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import pylab
+
 import sklearn
 import sklearn.svm
 from sklearn.svm import SVC
@@ -11,6 +13,9 @@ import csv
 import pickle
 import sys
 import random
+
+# image dimensions
+IMG_SIZE = (28, 28)
 
 # serialized object files for the data matrix and labels
 TRAIN_DATA_PICKLE = 'train_data.pickle'
@@ -191,29 +196,6 @@ def mlCovarianceMatrix(X):
 
     return covarianceMatrix / n
 
-# Perform PCA, optionally apply the "sphering" or "whitening" transform, in
-# which each eigenvector is scaled by 1/sqrt(lambda) where lambda is
-# the associated eigenvalue.  This has the effect of transforming the
-# data not just into an axis-aligned ellipse, but into a sphere.  
-# Input:
-# - X: n by d array representing n d-dimensional data points
-# Output:
-# - u: d by n array representing n d-dimensional eigenvectors;
-#      each column is a unit eigenvector; sorted by eigenvalue
-# - mu: 1 by d array representing the mean of the input data
-# -  l: list of non-zero eigenvalues
-# This version uses SVD for better numerical performance when d >> n
-
-def PCA(X, sphere = False):
-    (n, d) = X.shape
-    mu = np.mean(X, axis=0)
-    (x, l, v) = np.linalg.svd(X-mu)
-    l = np.hstack([l, np.zeros(v.shape[0] - l.shape[0], dtype=float)])
-    u = np.array([vi/(li if (sphere and li>1.0e-10) else 1.0) \
-                  for (li, vi) \
-                  in sorted(zip(l, v), reverse=True, key=lambda x: x[0])]).T
-    return np.matrix(u), mu
-
 def pca(X):
     """
     Steps:
@@ -239,64 +221,6 @@ def pca(X):
             toDel.append(i)
 
     return np.delete(eig_vecs_sorted, toDel, 0).T
-
-'''
-def projection(dataX, eigensCovX, numComponents):
-    """
-    Returns a reduced dimensionality version of X
-    by approximating the matrix
-
-    X             = original (n x d) data matrix
-    eigensCovX    = covariance feature matrix of X such that it is (d x d)
-    numComponents = number of componenets we will use to approximate X
-                    scalar in range [d, n]
-    """
-    X = np.copy(dataX)
-    n = X.shape[0]
-
-    # subtract out the mean
-    p = np.mean(X, axis = 0)
-    for i in range(n):
-        X[i, :] -= p
-
-    # then project using only first componenets
-    return X * eigensCovX[:, 0:numComponents]
-
-def reconstruction(originalX, eigensCovX, projectedX):
-    """
-    Reconstructs the data given the reduced dimensional data
-
-    originalX  = original (n x d) data matrix, we need it only for the mean to uncenter the data
-    eigensCovX = all eigenvectors (sorted) of covariance of X (d x d)
-    projectedX = the reduced dimensionality version of X (m examples x c dimensions)
-    """
-
-    print "Reconstructing..."
-    print "originalX shape:", originalX.shape
-    print "eigensCovX shape:", eigensCovX.shape
-    print "projectedX shape:", projectedX.shape
-
-    # grab c
-    c = projectedX.shape[1]
-   
-    # multiply the reduced eigenvalue matrix (c eigenvectors)
-    # with the transpose of the projectedX matrix, which is the data
-    # with its dimensionality reduced by projection onto the
-    # c largest eigens
-    subsetE = np.matrix(eigensCovX[:, 0:c])
-
-    print "subsetE shape:", subsetE.shape
-
-    reconstructed = np.matrix(projectedX) * subsetE.T 
-    
-    # find the origin (mean) and add it back in
-    p = np.mean(originalX, axis = 0)
-    m = reconstructed.shape[0]
-    for i in range(m):
-        reconstructed[i, :] += p
-        
-    return reconstructed
-'''
 
 def projection(X, E, l):
 
@@ -335,9 +259,10 @@ def reconstruction(X, E, P):
         
     return answer
 
-_image_size = (28, 28)
-def showIm(im, size = _image_size):
+def showIm(im, size = IMG_SIZE):
     """
+    Taken from the 6.S064 Machine Learning class at MIT 
+
     im: a row or column vector of dimension d
     size: a pair of positive integers (i, j) such that i * j = d
        defaults to the right value for our images
@@ -349,11 +274,14 @@ def showIm(im, size = _image_size):
     pylab.show()
 
 # Take an eigenvector and make it into an image
-def vecToImage(x, size = _image_size):
-  im = x/np.linalg.norm(x)
-  im = im*(256./np.max(im))
-  im.resize(*size)
-  return im
+def vecToImage(x, size = IMG_SIZE:
+    """
+    Taken from the 6.S064 Machine Learning class at MIT 
+    """
+    im = x/np.linalg.norm(x)
+    im = im*(256./np.max(im))
+    im.resize(*size)
+    return im
 
 def plotMeanByClass(X, y):
     meansDict = {}
