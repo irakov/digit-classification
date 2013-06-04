@@ -8,15 +8,24 @@ import sklearn
 import sklearn.svm
 from sklearn.svm import SVC
 from sklearn.cross_validation import train_test_split
+from sklearn.metrics import confusion_matrix, average_precision_score, accuracy_score
 
 import csv
 import pickle
 import sys
-import random
 from heapq import *
 
 # image dimensions
-IMG_SIZE = (28, 28)
+IMG_HEIGHT = 28
+IMG_WIDTH = 28
+IMG_DIMENSION = IMG_HEIGHT * IMG_WIDTH
+IMG_SIZE = (IMG_HEIGHT, IMG_WIDTH)
+
+# data characteristics
+NUM_CLASSES = 10 # [0-9]
+
+# training / testing params
+TEST_RATIO = 0.25
 
 # serialized object files for the data matrix and labels
 TRAIN_DATA_PICKLE = 'train_data.pickle'
@@ -34,10 +43,17 @@ EIGENVECTOR_COVX_ALL = 'eigs_x_all.pickle'
 KMEANS_RANDOM_INIT = "kmeans_random_predictions.txt"
 KMEANS_MEAN_INIT = "kmeans_mean_predictions.txt"
 
+# directories
+KNN_DIR = "plots/kNN"
+KMEANS_DIR = "plots/kMeans"
+MEANS_DIR = "plots/means"
+PICKLES_DIR = "pickles"
+
 def savePickle(obj, filename):
     """
     Save this object as a pickled object file.
     """
+    filename = "%s/%s" % (PICKLES_DIR, filename)
     with open(filename, 'w') as f:
         pickle.dump(obj, f)
     f.close()
@@ -46,16 +62,55 @@ def loadPickle(filename):
     """
     Load this pickle file from a particular path location.
     """
+    filename = "%s/%s" % (PICKLES_DIR, filename)
     with open(filename, 'r') as f:
         return pickle.load(f)
 
 def l2(x1, x2):
     return np.sum(np.square(x1 - x2))
 
-def csv2matrix(csvpath, hasFirstRowAsLabels=True, pickleFile=None):
+def getTrainData(loadPickledData=True):
+    """
+    Loads or calculates the training data and labels from disk. 
+    """
+
+    if loadPickledData:
+        print "[*] Loading training data matrix..."
+        data = loadPickle(TRAIN_DATA_PICKLE)
+        X = data['data']
+    else:
+        print "[*] Converting training data from CSV to matrix format..."
+        X, names  = csv2matrix(TRAIN_DATA_CSV, True, TRAIN_DATA_PICKLE)
+    
+    # ready it for processing
+    Y = np.array(X[:, 0])
+    X = X[:, 1:]
+    return (X, Y)
+
+def getTestData(loadPickledData=True):
+    """
+    Loads or calculates the test data and labels from disk. 
+    """
+
+    if loadPickledData:
+        print "[*] Loading test data matrix..."
+        data = loadPickle(TEST_DATA_PICKLE)
+        X = data['data']
+    else:
+        print "[*] Converting test data from CSV to matrix format..."
+        X, names  = csv2matrix(TEST_DATA_CSV, True, TRAIN_DATA_PICKLE)
+    
+    # ready it for processing
+    Y = np.array(X[:, 0])
+    X = X[:, 1:]
+    return (X, Y)
+
+def csv2matrix(csvpath, hasFirstRowAsLabels=True, pickleFileName=None):
     """
     Reads a CSV file into a matrix. Also optionally saves the data matrix
     into a pickled file and extracts header labels for fields. 
+
+    if no pickleFileName is specified (is None), the data is not saved to disk
     """
     cols = -1
     i = 0
@@ -95,11 +150,11 @@ def csv2matrix(csvpath, hasFirstRowAsLabels=True, pickleFile=None):
             i += 1
 
     # should we serialize the object and save to disk?
-    if pickleFile:
+    if pickleFileName:
         if hasFirstRowAsLabels:
-            savePickle({'data' : data, 'names' : featureNames}, pickleFile)
+            savePickle({'data' : data, 'names' : featureNames}, pickleFileName)
         else:
-            savePickle({'data' : data}, pickleFile)
+            savePickle({'data' : data}, pickleFileName)
 
     if hasFirstRowAsLabels:
         return data, featureNames
@@ -198,13 +253,16 @@ def mlCovarianceMatrix(X):
 
     return covarianceMatrix / n
 
-def pca(X):
+def pca(X, loadFromPickle=False):
     """
     Steps:
         1) Create covariance matrix of the data
         2) Extract eigenvalues and eigenvectors
         3) Sort by size of eigenvalues, remove any below 1e-10
     """
+
+    if loadFromPickle:
+        return loadPickle(EIGENVECTOR_COVX_ALL)
     
     # create (d x d) covariance matrix
     covX = mlCovarianceMatrix(X)
@@ -285,7 +343,7 @@ def vecToImage(x, size = IMG_SIZE):
     im.resize(*size)
     return im
 
-def plotMeanByClass(X, y):
+def plotMeanByClass(X, y, showPlots=False):
     meansDict = {}
     means = []
 
@@ -319,8 +377,9 @@ def plotMeanByClass(X, y):
         means[i] = np.mean(stacked, axis=0)
         
         # to display the means
-        #print "Now showing mean of %s" % str(uniques[i])
-        #showIm(means[i])
+        if showPlots:
+            print "Now showing mean of %s" % str(uniques[i])
+            showIm(means[i])
 
     # make into a matrix and return
     # each row is the character class [0-9]
@@ -372,21 +431,10 @@ def digitRecognitionKMeans(meanInit=True, loadPickledData=True):
 
     #### TRAIN ####
     # load the training data
-    trainX = None
-    if loadPickledData:
-        print "[*] Loading data matrix..."
-        data = loadPickle(TRAIN_DATA_PICKLE)
-        X = data['data']
-    else:
-        print "[*] Converting data from CSV to matrix format..."
-        X, names  = csv2matrix(TRAIN_DATA_CSV, True, TRAIN_DATA_PICKLE)
-    
-    # ready it for processing
-    Y = np.array(X[:, 0])
-    X = X[:, 1:]
+    X, Y = getTrainData()
 
     # split into training and testing
-    (trainX, testX, trainY, testY) = sklearn.cross_validation.train_test_split(X, Y, test_size=0.75)
+    (trainX, testX, trainY, testY) = sklearn.cross_validation.train_test_split(X, Y, test_size=TEST_RATIO)
 
     # try clustering by means
     init = None
@@ -396,7 +444,7 @@ def digitRecognitionKMeans(meanInit=True, loadPickledData=True):
     else:
         # do random init
         print "[*] Computing random centers for initialization..."
-        init = np.random.random_integers(0, high=256, size=(10, 784))
+        init = np.random.random_integers(0, high=256, size=(NUM_CLASSES, IMG_DIMENSION))
     
     print "[*] Building clustering model..."
     centers, clusterAssignments = kMeans(trainX, init, l2)
@@ -413,7 +461,7 @@ def digitRecognitionKMeans(meanInit=True, loadPickledData=True):
 
     # clear memory 
     print "[*] Clearing memory of training & testing data..."
-    del trainX, trainY, testX, testY, data
+    del trainX, trainY, testX, testY
 
     ### TEST ###
     if loadPickledData:
@@ -445,7 +493,14 @@ def digitRecognitionKMeans(meanInit=True, loadPickledData=True):
 
 def kMeansWithPCA(meanInit=True, loadPickledData=False):
     """
-    RESULTS (with 2500 examples):
+    Tries to simplify the problem of clustering by projecting digit images
+    into lower dimensional space with PCA and then clustering. Here we try a number of 
+    values for l, the number of principal components
+
+    meanInit        = do we initialize the centroids to means of the training set (else random)
+    loadPickledData = do we load eigenvectors of covariance matrix of X (else calculate them)
+
+    [*] RESULTS (with 2500 examples):
 
     accuracies = [0.1708, 0.2524,0.3684,0.4344,0.5332,0.5924,0.7204,0.7392,0.734,0.7492,0.7476,0.7476]
     l_values = [1, 5, 15, 50, 100, 200, 300, 400, 500, 600, 700, 784]
@@ -456,26 +511,10 @@ def kMeansWithPCA(meanInit=True, loadPickledData=False):
     accs = []
     for l in l_values:
 
-        print
-        print "[*] Loading data..."
-        data = loadPickle(TRAIN_DATA_PICKLE)
-        X = data['data']
-        Y = np.array(X[:, 0])
-        X = X[:, 1:]
-
-        """ Comment this in to restrict the size of the dataset
-        X = X[0:2500, :]
-        Y = Y[0:2500, :]
-        """
+        X, Y = getTrainData()
 
         # get the eigenvectos of the covariance of X
-        E = None
-        if loadPickledData:
-            print "[*] Loading eigenvectors..."
-            E = loadPickle(EIGENVECTOR_COVX_ALL)
-        else:
-            print "[*] Calculating eigenvectors..."
-            E = pca(X)
+        E = pca(X, loadFromPickle=True)
 
         # initialize clusters
         init = None
@@ -485,7 +524,7 @@ def kMeansWithPCA(meanInit=True, loadPickledData=False):
         else:
             # do random init
             print "[*] Computing random centers for initialization..."
-            init = np.random.random_integers(0, high=256, size=(10, 784))
+            init = np.random.random_integers(0, high=256, size=(NUM_CLASSES, IMG_DIMENSION))
 
         print "[*] Projecting examples down into (%d) dimensional space..." % l
         projX = projection(X, E, l)
@@ -502,7 +541,7 @@ def kMeansWithPCA(meanInit=True, loadPickledData=False):
         accs.append(accuracy)
 
     # then plot the resulting curve to see the optimal values for PCA
-    plt.figure('Accuracy as a function of number of components projected')
+    plt.figure('kMeans with PCA: Accuracy as a function of number of components')
     ax = plt.subplot(111)
     ax.plot(l_values, accs, label = "Accuracy")
     plt.xlabel('Number of components (l)')
@@ -558,7 +597,83 @@ def testKNN():
 
     return label1 == 1 and label2 == 2
 
+def kNNwithoutPCA(loadPickledData=True):
 
+    print
+    X, Y = getTrainData(loadPickledData)
+    (trainX, testX, trainY, testY) = sklearn.cross_validation.train_test_split(X, Y, test_size=TEST_RATIO)
+    numTestX = testX.shape[0]
+    k_values = [1, 3, 5, 7, 9]
+    accuracies = []
+
+    print "[*] Beginning kNN testing without PCA..."
+    for k in k_values:
+        print "[*] Using k = %d ..." % k
+        predictions = []
+        actual = np.array(Y).flatten().tolist()
+        for i in range(numTestX):
+            example = testX[i, :]
+            predictions.append(kNN(trainX, trainY, example, l2, k))
+
+        accuracy = accuracy_score(actual, predictions)
+        accuracies.append(accuracy)
+        print "Accuracy for k = %d was %f" % (k, accuracy)
+
+    # then plot the resulting curve to see the optimal values for k
+    plt.figure('kNN without PCA: Accuracy as a function of k')
+    ax = plt.subplot(111)
+    ax.plot(k_values, accuracies, label = "Accuracy")
+    plt.xlabel('Number nearest neighbors (k)')
+    plt.ylabel('Accuracy')
+    ax.legend(loc='lower right')
+    #plt.show()
+    plt.savefig("%s/kNN.png" % KNN_DIR)
+
+def kNNPCA(loadPickledData=True):
+
+    print
+    X, Y = getTrainData(loadPickledData)
+    (trainX, testX, trainY, testY) = sklearn.cross_validation.train_test_split(X, Y, test_size=TEST_RATIO)
+    numTestX = testX.shape[0]
+    k_values = [1, 3, 5, 7, 9]
+    l_values = [1, 5, 15, 50, 100, 200, 300, 400, 500, 600, 784]
+    accuracies = {}
+
+    print "[*] Calculating eigenvectors of cov(X)..."
+    E = pca(X, loadFromPickle=False)
+
+    print "[*] Beginning kNN testing with PCA..."
+    for k in k_values:
+        
+        # we are fixing k and seeing how varying l effects the results
+        accuracies[k] = []
+
+        for l in l_values:
+
+            print "[*] Projecting X into l = %d dimensions, k = %d" % (l,k)
+            projTrainX = projection(X, E, l)
+
+            print "[*] Making predictions with kNN..."
+            predictions = []
+            actual = np.array(Y).flatten().tolist()
+            for i in range(numTestX):
+                example = projTrainX[i, :]
+                predictions.append(kNN(projTrainX, trainY, example, l2, k))
+
+            accuracy = accuracy_score(actual, predictions)
+            accuracies[k].append(accuracy)
+            print "Accuracy for l = %d, k = %d was %f" % (l, k, accuracy)
+
+    for k in k_values:
+        # then plot the resulting curve to see the optimal values for k
+        plt.figure("kNN with PCA: Accuracy varying with l = %d and fixed k = %d" % (l, k))
+        ax = plt.subplot(111)
+        ax.plot(l_values, accuracies[k], label = "Accuracy")
+        plt.xlabel('Number principal components (l)')
+        plt.ylabel('Accuracy')
+        ax.legend(loc='lower right')
+        #plt.show()
+        plt.savefig("%s/kNN-with-PCA-k-%d.png" % (KNN_DIR, k))
 
 '''
 ############################ RESULTS ########################################
@@ -572,8 +687,11 @@ digitRecognitionKMeans(meanInit=False, loadPickledData=True)
 digitRecognitionKMeans(meanInit=True, loadPickledData=True)
 
 #
-kMeansWithPCA(True, False)
+kMeansWithPCA(meanInit=True, loadPickledData=True)
 
 #
-kMeansWithPCA(False, False)
+kMeansWithPCA(meanInit=False, loadPickledData=True)
+
+# 
+kNNwithoutPCA(loadPickledData=True)
 '''
