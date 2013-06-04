@@ -13,6 +13,8 @@ from sklearn.metrics import confusion_matrix, average_precision_score, accuracy_
 import csv
 import pickle
 import sys
+import os
+import time
 from heapq import *
 
 # image dimensions
@@ -47,11 +49,15 @@ KMEANS_DIR  = "plots/kMeans"
 MEANS_DIR   = "plots/means"
 PICKLES_DIR = "pickles"
 
+# global plotting
+alg_times = [] # list of tuples (time elapsed in s, function name, list(args))
+alg_accuracies = []
+
 def savePickle(obj, filename):
     """
     Save this object as a pickled object file.
     """
-    filename = "%s/%s" % (PICKLES_DIR, filename)
+    filename = os.path.join(PICKLES_DIR, filename)
     with open(filename, 'w') as f:
         pickle.dump(obj, f)
     f.close()
@@ -60,18 +66,40 @@ def loadPickle(filename):
     """
     Load this pickle file from a particular path location.
     """
-    filename = "%s/%s" % (PICKLES_DIR, filename)
+    filename = os.path.join(PICKLES_DIR, filename)
     with open(filename, 'r') as f:
         return pickle.load(f)
 
 def l2(x1, x2):
+    """
+    Euclidian distance metric
+    """
     return np.sum(np.square(x1 - x2))
+
+def print_timing(func):
+    """
+    Snippet adapted from:
+    http://stackoverflow.com/questions/8889083/how-to-time-execution-time-of-a-batch-of-code-in-python
+    """
+    def wrapper(*arg, **kw):
+        t1 = time.time()
+        res = func(*arg)
+        t2 = time.time()
+        elapsed = t2 - t1
+        string = '| %s took %0.3f s |' % (func.func_name, elapsed)
+        alg_times.append((elapsed, func.func_name, list(**kw)))
+        print
+        print '-'*len(string)
+        print string
+        print '-'*len(string)
+        print
+        return res
+    return wrapper
 
 def getTrainData(loadPickledData=True):
     """
     Loads or calculates the training data and labels from disk. 
     """
-
     if loadPickledData:
         print "[*] Loading training data matrix..."
         data = loadPickle(TRAIN_DATA_PICKLE)
@@ -437,7 +465,8 @@ def kMeansFit(X, centers, metric):
 
     return predictions
 
-def digitRecognitionKMeans(meanInit=True, loadPickledData=True):
+@print_timing
+def kMeansWithoutPCA(meanInit=True, loadPickledData=True):
     """
     Performs kMeans clustering on the digits dataset with options for 
     initialization and whether to load from previously calculated data 
@@ -513,6 +542,7 @@ def digitRecognitionKMeans(meanInit=True, loadPickledData=True):
     print "[*] Clearing memory of test data..."
     del testX, data, predictions
 
+@print_timing
 def kMeansWithPCA(meanInit=True, loadPickledData=False):
     """
     Tries to simplify the problem of clustering by projecting digit images
@@ -580,6 +610,9 @@ def kNN(X, Y, z, dist, k):
     z    = example we are trying to classify    (1 x d)
     dist = distance metric
     k    = # of NN to consider (should be odd)
+
+    Makes use of priority heap:
+    http://docs.python.org/2/library/heapq.html
     """
 
     n = X.shape[0]
@@ -607,6 +640,7 @@ def kNN(X, Y, z, dist, k):
     count, label = max([(c, l) for l, c in neighborsCount.iteritems()])
     return label
 
+@print_timing
 def testKNN():
     """
     Small test for kNN method, returns True upon sucess
@@ -619,6 +653,7 @@ def testKNN():
 
     return label1 == 1 and label2 == 2
 
+@print_timing
 def kNNwithoutPCA(loadPickledData=True):
     """
     Simple application of kNN with varying values of k
@@ -652,8 +687,9 @@ def kNNwithoutPCA(loadPickledData=True):
     plt.ylabel('Accuracy')
     ax.legend(loc='lower right')
     #plt.show()
-    plt.savefig("%s/kNN.png" % KNN_DIR)
+    plt.savefig(os.path.join(KNN_DIR, "kNN.png"))
 
+@print_timing
 def kNNPCA(loadPickledData=True):
     """
     Use PCA to reduce the dimensionality of the data through projection. 
@@ -668,7 +704,7 @@ def kNNPCA(loadPickledData=True):
     accuracies = {}
 
     print "[*] Calculating eigenvectors of cov(X)..."
-    E = pca(X, loadFromPickle=False)
+    E = pca(X, loadFromPickle=True)
 
     print "[*] Beginning kNN testing with PCA..."
     for k in k_values:
@@ -701,18 +737,35 @@ def kNNPCA(loadPickledData=True):
         plt.ylabel('Accuracy')
         ax.legend(loc='lower right')
         #plt.show()
-        plt.savefig("%s/kNN-with-PCA-k-%d.png" % (KNN_DIR, k))
+        plt.savefig(os.path.join(KNN_DIR, "kNN-with-PCA-k-%d.png" % k))
+
+def SVMOneVsAll(loadPickledData=True):
+    """
+    """
+    X, Y = getTrainData(loadPickledData=True)
+
+    print "[*] Creating one-vs-all label masks..."
+    n = Y.shape[0]
+    YvsAll = np.matrix(np.zeros((n, NUM_CLASSES), dtype='int'))
+    for j in range(NUM_CLASSES):
+        YvsAll[:, j] = (Y == j).astype(int)
+
+
+
+def SVMECOC(loadPickledData=True):
+    pass
+
 
 '''
 ############################ RESULTS ########################################
 # Training accuracy: 0.103714
 # Testing accuracy: 0.108794
-digitRecognitionKMeans(meanInit=False, loadPickledData=True)
+kMeansWithoutPCA(meanInit=False, loadPickledData=True)
 
 # Training accuracy: 0.762571
 # Testing accuracy: 0.756635
 # kaggle validation: 0.75
-digitRecognitionKMeans(meanInit=True, loadPickledData=True)
+kMeansWithoutPCA(meanInit=True, loadPickledData=True)
 
 #
 kMeansWithPCA(meanInit=True, loadPickledData=True)
@@ -722,4 +775,7 @@ kMeansWithPCA(meanInit=False, loadPickledData=True)
 
 # 
 kNNwithoutPCA(loadPickledData=True)
+
+#
+kNNPCA(loadPickledData=True)
 '''
