@@ -13,6 +13,7 @@ import csv
 import pickle
 import sys
 import random
+from heapq import *
 
 # image dimensions
 IMG_SIZE = (28, 28)
@@ -275,7 +276,7 @@ def showIm(im, size = IMG_SIZE):
     pylab.show()
 
 # Take an eigenvector and make it into an image
-def vecToImage(x, size = IMG_SIZE:
+def vecToImage(x, size = IMG_SIZE):
     """
     Taken from the 6.S064 Machine Learning class at MIT 
     """
@@ -484,7 +485,7 @@ def kMeansWithPCA(meanInit=True, loadPickledData=False):
         else:
             # do random init
             print "[*] Computing random centers for initialization..."
-            init = np.random.random_integers(0, high=256, size=(10, l))
+            init = np.random.random_integers(0, high=256, size=(10, 784))
 
         print "[*] Projecting examples down into (%d) dimensional space..." % l
         projX = projection(X, E, l)
@@ -509,8 +510,55 @@ def kMeansWithPCA(meanInit=True, loadPickledData=False):
     ax.legend(loc='lower right')
     plt.show()
 
-def kNN(k):
-    pass
+def kNN(X, Y, z, dist, k):
+    """
+    PARAMS:
+
+    X    = dataset                              (n x d)
+    Y    = labels                               (n x 1)
+    z    = example we are trying to classify    (1 x d)
+    dist = distance metric
+    k    = # of NN to consider (should be odd)
+    """
+
+    n = X.shape[0]
+
+    bestK = [] # priority queue
+
+    # search for k closest neighbors to z
+    for i in range(n):
+        distance = dist(X[i, :], z)
+        heappush(bestK, (distance, i))
+        bestK = nsmallest(k, bestK)
+
+    # count the number of neighbors
+    neighborsCount = {} # label => count
+    for d, i in bestK:
+
+        label = Y[i, 0]
+        if not label in neighborsCount:
+            neighborsCount[label] = 1
+        else:
+            neighborsCount[label] += 1
+
+    # return the label for which the majority of the neighbors are
+    # in ties, this simply chooses arbitrarily
+    count, label = max([(c, l) for l, c in neighborsCount.iteritems()])
+    return label
+
+def testKNN():
+    """
+    Small test for kNN method, returns True upon sucess
+    """
+    X = np.matrix([[1,1], [2,1], [1,2], [1,3], [2,3]])
+    Y = np.matrix([1, 1, 2, 2, 2]).T
+
+    label1 = kNN(X, Y, np.matrix([1.5, 1.5]), l2, 3)
+    label2 = kNN(X, Y, np.matrix([1.5, 1.5]), l2, 5)
+
+    return label1 == 1 and label2 == 2
+
+
 
 '''
 ############################ RESULTS ########################################
@@ -522,8 +570,10 @@ digitRecognitionKMeans(meanInit=False, loadPickledData=True)
 # Testing accuracy: 0.756635
 # kaggle validation: 0.75
 digitRecognitionKMeans(meanInit=True, loadPickledData=True)
-'''
 
+#
 kMeansWithPCA(True, False)
 
+#
 kMeansWithPCA(False, False)
+'''
