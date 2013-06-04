@@ -16,10 +16,10 @@ import sys
 from heapq import *
 
 # image dimensions
-IMG_HEIGHT = 28
-IMG_WIDTH = 28
+IMG_HEIGHT    = 28
+IMG_WIDTH     = 28
 IMG_DIMENSION = IMG_HEIGHT * IMG_WIDTH
-IMG_SIZE = (IMG_HEIGHT, IMG_WIDTH)
+IMG_SIZE      = (IMG_HEIGHT, IMG_WIDTH)
 
 # data characteristics
 NUM_CLASSES = 10 # [0-9]
@@ -28,25 +28,23 @@ NUM_CLASSES = 10 # [0-9]
 TEST_RATIO = 0.25
 
 # serialized object files for the data matrix and labels
-TRAIN_DATA_PICKLE = 'train_data.pickle'
-TEST_DATA_PICKLE = 'test_data.pickle'
+TRAIN_DATA_PICKLE           = "train_data.pickle"
+TEST_DATA_PICKLE            = "test_data.pickle"
+EIGENVECTOR_COVX_FIRST_2500 = "eigs_x_2500.pickle"
+EIGENVECTOR_COVX_ALL        = "eigs_x_all.pickle"
 
 # source CSV files from Kaggle
-TRAIN_DATA_CSV = 'train.csv'
-TEST_DATA_CSV = 'test.csv'
-
-# eigenvector files
-EIGENVECTOR_COVX_FIRST_2500 = 'eigs_x_2500.pickle'
-EIGENVECTOR_COVX_ALL = 'eigs_x_all.pickle'
+TRAIN_DATA_CSV = "csv/train.csv"
+TEST_DATA_CSV  = "csv/test.csv"
 
 # prediction files
 KMEANS_RANDOM_INIT = "kmeans_random_predictions.txt"
-KMEANS_MEAN_INIT = "kmeans_mean_predictions.txt"
+KMEANS_MEAN_INIT   = "kmeans_mean_predictions.txt"
 
 # directories
-KNN_DIR = "plots/kNN"
-KMEANS_DIR = "plots/kMeans"
-MEANS_DIR = "plots/means"
+KNN_DIR     = "plots/kNN"
+KMEANS_DIR  = "plots/kMeans"
+MEANS_DIR   = "plots/means"
 PICKLES_DIR = "pickles"
 
 def savePickle(obj, filename):
@@ -162,7 +160,14 @@ def csv2matrix(csvpath, hasFirstRowAsLabels=True, pickleFileName=None):
     return data
 
 def kMeans(X, init, metric):
-    
+    """
+    The kMeans algorithm. Provided an initialization for the cluster
+    centroids and the dataset X, we use the distance metric to continue iteration
+    untill the distance classification error ceases decreasing.
+
+    For the l2 metric, the kMeans algorithm gurantees non-increasing error 
+    through iterations.
+    """
     # get value of k and n
     k = init.shape[0]
     n = X.shape[0]
@@ -232,7 +237,10 @@ def kMeans(X, init, metric):
     return (init, clusterAssignments)
 
 def mlCovarianceMatrix(X):
-
+    """
+    Calculate the covariance matrix of X (n x d) as a 
+    (d x d) matrix. 
+    """
     # get the dimensions
     n = X.shape[0]
     d = X.shape[1]
@@ -283,7 +291,10 @@ def pca(X, loadFromPickle=False):
     return np.delete(eig_vecs_sorted, toDel, 0).T
 
 def projection(X, E, l):
-
+    """
+    Projects the dataset X into a lower dimensional (l) space
+    using E, the eigenvectors of covariance(X).
+    """
     # number of classes
     numClasses = X.shape[0]
 
@@ -299,7 +310,11 @@ def projection(X, E, l):
     return np.matrix(X) * reducedE
 
 def reconstruction(X, E, P):
-
+    """
+    Reconstructs the projected dataset P by using E, the 
+    eigenvectors of covariance(X). The original X is required only 
+    for calculating the mean to uncenter the data. 
+    """
     # grab c
     c = P.shape[1]
    
@@ -344,6 +359,10 @@ def vecToImage(x, size = IMG_SIZE):
     return im
 
 def plotMeanByClass(X, y, showPlots=False):
+    """
+    Calculates the means of each digit class. showPlots=True 
+    allows them to be plotted for the user (warning: blocking).
+    """
     meansDict = {}
     means = []
 
@@ -387,6 +406,9 @@ def plotMeanByClass(X, y, showPlots=False):
 
 def kMeansFit(X, centers, metric):
     """
+    Using the centers as our model and our distance metric, we
+    fit X to our model, returning predictions for their labels
+
     X       = (n x d) data matrix
     centers = (k x d) cluster centers
     """
@@ -598,6 +620,9 @@ def testKNN():
     return label1 == 1 and label2 == 2
 
 def kNNwithoutPCA(loadPickledData=True):
+    """
+    Simple application of kNN with varying values of k
+    """
 
     print
     X, Y = getTrainData(loadPickledData)
@@ -630,7 +655,10 @@ def kNNwithoutPCA(loadPickledData=True):
     plt.savefig("%s/kNN.png" % KNN_DIR)
 
 def kNNPCA(loadPickledData=True):
-
+    """
+    Use PCA to reduce the dimensionality of the data through projection. 
+    Then we explore varying number of principal components under fixed k. 
+    """
     print
     X, Y = getTrainData(loadPickledData)
     (trainX, testX, trainY, testY) = sklearn.cross_validation.train_test_split(X, Y, test_size=TEST_RATIO)
